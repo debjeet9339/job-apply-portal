@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -17,7 +17,10 @@ type JobFormType = {
   description: string;
   salary: string;
   job_type: string;
+  skills: string;
 };
+
+type ApplicationStatus = 'pending' | 'approved' | 'rejected';
 
 type ApplicationType = {
   _id: string;
@@ -27,7 +30,49 @@ type ApplicationType = {
   recruiter_email: string;
   resume_file?: string;
   resume_url?: string;
+  status?: ApplicationStatus;
 };
+
+type JDResponseType = {
+  job_summary: string;
+  responsibilities: string[];
+  requirements: string[];
+  preferred_skills: string[];
+  benefits: string[];
+};
+
+function StatCard({
+  title,
+  value,
+  helper,
+}: {
+  title: string;
+  value: string;
+  helper: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+        {title}
+      </p>
+      <h3 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+        {value}
+      </h3>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{helper}</p>
+    </div>
+  );
+}
+
+function getStatusClasses(status: ApplicationStatus) {
+  switch (status) {
+    case 'approved':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300';
+    case 'rejected':
+      return 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-300';
+    default:
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300';
+  }
+}
 
 export default function RecruiterDashboard() {
   const router = useRouter();
@@ -36,8 +81,10 @@ export default function RecruiterDashboard() {
   const [user, setUser] = useState<UserType | null>(null);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [applications, setApplications] = useState<ApplicationType[]>([]);
   const [loadingApplicants, setLoadingApplicants] = useState(true);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const [jobData, setJobData] = useState<JobFormType>({
     title: '',
@@ -46,14 +93,32 @@ export default function RecruiterDashboard() {
     description: '',
     salary: '',
     job_type: '',
+    skills: '',
   });
 
-  // Helper to safely extract error messages from backend responses
   const getErrorMessage = (detail: any, fallback: string) => {
     if (typeof detail === 'string') return detail;
-    if (Array.isArray(detail)) return detail.map((err: any) => err.msg || 'Validation Error').join(', ');
+    if (Array.isArray(detail)) {
+      return detail.map((err: any) => err.msg || 'Validation Error').join(', ');
+    }
     if (detail && typeof detail === 'object') return detail.msg || fallback;
     return fallback;
+  };
+
+  const buildDescriptionFromAI = (data: JDResponseType) => {
+    return `${data.job_summary}
+
+Responsibilities:
+${data.responsibilities.map((item) => `• ${item}`).join('\n')}
+
+Requirements:
+${data.requirements.map((item) => `• ${item}`).join('\n')}
+
+Preferred Skills:
+${data.preferred_skills.map((item) => `• ${item}`).join('\n')}
+
+Benefits:
+${data.benefits.map((item) => `• ${item}`).join('\n')}`;
   };
 
   useEffect(() => {
@@ -68,8 +133,18 @@ export default function RecruiterDashboard() {
     const parsedUser = JSON.parse(storedUser);
     setUser(parsedUser);
 
-    if (parsedUser.role !== 'recruiter') {
+    if (parsedUser.role === 'admin') {
+      router.push('/admin_dashboard');
+      return;
+    }
+
+    if (parsedUser.role === 'candidate') {
       router.push('/candidate_dashboard');
+      return;
+    }
+
+    if (parsedUser.role !== 'recruiter') {
+      router.push('/login');
       return;
     }
 
@@ -79,22 +154,38 @@ export default function RecruiterDashboard() {
   const fetchApplications = async (email: string) => {
     setLoadingApplicants(true);
     setMessage({ text: '', type: '' });
+
     const token = localStorage.getItem('token');
+
     try {
-      const res = await fetch(`http://127.0.0.1:8000/applications/${encodeURIComponent(email)}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetch(
+        `http://127.0.0.1:8000/applications/${encodeURIComponent(email)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
       const data = await res.json();
 
       if (res.ok) {
-        setApplications(data.applications || []);
+        const mappedApplications = (data.applications || []).map((item: ApplicationType) => ({
+          ...item,
+          status: item.status || 'pending',
+        }));
+        setApplications(mappedApplications);
       } else {
-        setMessage({ text: getErrorMessage(data.detail, 'Failed to load applicants'), type: 'error' });
+        setMessage({
+          text: getErrorMessage(data.detail, 'Failed to load applicants'),
+          type: 'error',
+        });
       }
-    } catch (error) {
-      setMessage({ text: 'Network error. Something went wrong while fetching applicants.', type: 'error' });
+    } catch {
+      setMessage({
+        text: 'Network error. Something went wrong while fetching applicants.',
+        type: 'error',
+      });
     } finally {
       setLoadingApplicants(false);
     }
@@ -107,12 +198,77 @@ export default function RecruiterDashboard() {
   };
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
-    setJobData({
-      ...jobData,
+    setJobData((prev) => ({
+      ...prev,
       [e.target.name]: e.target.value,
-    });
+    }));
+  };
+
+  const handleGenerateJD = async () => {
+    if (!jobData.title || !jobData.company || !jobData.location) {
+      setMessage({
+        text: 'Please fill Job Title, Company Name, and Location before generating AI description.',
+        type: 'error',
+      });
+      return;
+    }
+
+    setAiLoading(true);
+    setMessage({ text: '', type: '' });
+
+    const token = localStorage.getItem('token');
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/generate-job-description', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: jobData.title,
+          company: jobData.company,
+          location: jobData.location,
+          salary: jobData.salary,
+          employment_type: jobData.job_type,
+          skills: jobData.skills
+            .split(',')
+            .map((skill) => skill.trim())
+            .filter(Boolean),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMessage({
+          text: getErrorMessage(data.detail, 'Failed to generate job description'),
+          type: 'error',
+        });
+        return;
+      }
+
+      const fullDescription = buildDescriptionFromAI(data);
+
+      setJobData((prev) => ({
+        ...prev,
+        description: fullDescription,
+      }));
+
+      setMessage({
+        text: 'AI job description generated successfully.',
+        type: 'success',
+      });
+    } catch {
+      setMessage({
+        text: 'Network error while generating job description.',
+        type: 'error',
+      });
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const handlePostJob = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -122,7 +278,9 @@ export default function RecruiterDashboard() {
 
     setLoading(true);
     setMessage({ text: '', type: '' });
+
     const token = localStorage.getItem('token');
+
     try {
       const res = await fetch('http://127.0.0.1:8000/jobs', {
         method: 'POST',
@@ -131,8 +289,13 @@ export default function RecruiterDashboard() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          ...jobData,
-          recruiter_email: user?.email,
+          title: jobData.title,
+          company: jobData.company,
+          location: jobData.location,
+          description: jobData.description,
+          salary: jobData.salary,
+          job_type: jobData.job_type,
+          recruiter_email: user.email,
         }),
       });
 
@@ -147,167 +310,333 @@ export default function RecruiterDashboard() {
           description: '',
           salary: '',
           job_type: '',
+          skills: '',
         });
       } else {
-        setMessage({ text: getErrorMessage(data.detail, 'Failed to post job'), type: 'error' });
+        setMessage({
+          text: getErrorMessage(data.detail, 'Failed to post job'),
+          type: 'error',
+        });
       }
-    } catch (error) {
-      setMessage({ text: 'Network error. Something went wrong.', type: 'error' });
+    } catch {
+      setMessage({
+        text: 'Network error. Something went wrong.',
+        type: 'error',
+      });
     } finally {
       setLoading(false);
     }
   };
 
+  const handleApplicationAction = async (
+    applicationId: string,
+    status: ApplicationStatus
+  ) => {
+    const token = localStorage.getItem('token');
+    setActionLoadingId(applicationId);
+    setMessage({ text: '', type: '' });
+
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:8000/applications/${applicationId}/status`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setApplications((prev) =>
+          prev.map((item) =>
+            item._id === applicationId ? { ...item, status } : item
+          )
+        );
+
+        setMessage({
+          text: `Application ${status} successfully.`,
+          type: 'success',
+        });
+      } else {
+        setMessage({
+          text: getErrorMessage(data.detail, `Failed to ${status} application`),
+          type: 'error',
+        });
+      }
+    } catch {
+      setMessage({
+        text: 'Network error while updating application status.',
+        type: 'error',
+      });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const applicantCount = applications.length;
+
+  const recruiterInitial = useMemo(() => {
+    return user?.name?.trim()?.charAt(0)?.toUpperCase() || 'R';
+  }, [user]);
+
   if (!mounted) return null;
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-slate-50 font-sans text-slate-900 transition-colors duration-500 dark:bg-[#0B1120] dark:text-slate-50">
-      {/* Background Ambient Glow */}
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0B1120] dark:text-slate-50">
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -left-[10%] -top-[10%] h-125 w-125 rounded-full bg-indigo-400/20 blur-[120px] dark:bg-indigo-900/20" />
-        <div className="absolute right-[0%] top-[20%] h-100 w-100 rounded-full bg-cyan-400/20 blur-[120px] dark:bg-cyan-900/20" />
+        <div className="absolute -left-20 top-0 h-72 w-72 rounded-full bg-indigo-400/20 blur-3xl dark:bg-indigo-700/20" />
+        <div className="absolute right-0 top-20 h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl dark:bg-cyan-700/20" />
+        <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-fuchsia-300/10 blur-3xl dark:bg-fuchsia-700/10" />
       </div>
 
-      {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/70 px-6 py-4 backdrop-blur-md dark:border-slate-800/60 dark:bg-slate-900/70 sm:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
-              JobPortal
-            </span>
-          </Link>
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/75">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+          <div className="flex items-center justify-between gap-4">
+            <Link href="/" className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-bold text-white shadow-lg shadow-indigo-600/20">
+                C
+              </div>
+              <div>
+                <p className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">
+                  CareerNest
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Recruiter workspace
+                </p>
+              </div>
+            </Link>
 
-          <div className="flex items-center gap-4 sm:gap-6">
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-semibold text-slate-900 dark:text-white">{user?.name}</p>
-              <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">Recruiter</p>
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200 lg:hidden">
+              {recruiterInitial}
             </div>
-            <div className="hidden h-8 w-px bg-slate-200 dark:bg-slate-700 sm:block"></div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/80">
+              <div className="hidden h-11 w-11 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700 dark:flex dark:bg-indigo-500/15 dark:text-indigo-300">
+                {recruiterInitial}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                  {user?.name || 'Recruiter'}
+                </p>
+                <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                  {user?.email}
+                </p>
+              </div>
+            </div>
+
             <button
               onClick={handleLogout}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
+              className="inline-flex min-h-[46px] items-center justify-center rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-              </svg>
               Logout
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="mx-auto max-w-7xl px-6 py-10 sm:px-8 sm:py-12">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <section className="mb-6 rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 sm:p-7">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="mb-2 inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                CareerNest recruiter dashboard
+              </p>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl lg:text-4xl">
+                Hire faster with a cleaner, smarter workflow
+              </h1>
+              <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400 sm:text-base">
+                Create better job posts, generate descriptions with AI, and manage
+                applicants from one responsive dashboard.
+              </p>
+            </div>
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-            Recruiter Dashboard
-          </h1>
-          <p className="mt-2 text-lg text-slate-600 dark:text-slate-400">
-            Manage your job postings and review candidate applications.
-          </p>
-        </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:min-w-[420px]">
+              <StatCard
+                title="Applicants"
+                value={String(applicantCount)}
+                helper="Total received"
+              />
+              <StatCard
+                title="AI Support"
+                value="Ready"
+                helper="Generate JD quickly"
+              />
+              <StatCard
+                title="Portal"
+                value="CareerNest"
+                helper="Recruiter panel"
+              />
+            </div>
+          </div>
+        </section>
 
-        {/* Global Message Alert */}
         {message.text && (
-          <div className={`mb-8 rounded-xl p-4 text-sm font-medium border ${message.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400' : 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'}`}>
+          <div
+            className={`mb-6 rounded-2xl border px-4 py-4 text-sm font-medium ${
+              message.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                : 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300'
+            }`}
+          >
             {message.text}
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-
-          {/* Left Column: Post Job Form */}
-          <div className="lg:col-span-5">
-            <div className="sticky top-28 rounded-3xl border border-slate-200/60 bg-white/70 p-6 shadow-sm backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-900/70 sm:p-8">
-              <div className="mb-6 flex items-center gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-6 w-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+          <section className="xl:col-span-5">
+            <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 sm:p-6 xl:sticky xl:top-24">
+              <div className="mb-6 flex items-start justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    Post a new job
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Fill the details and publish on CareerNest.
+                  </p>
                 </div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Post a New Job</h2>
+                <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                  Recruiter
+                </span>
               </div>
 
-              <form onSubmit={handlePostJob} className="space-y-4">
+              <form onSubmit={handlePostJob} className="space-y-5">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Job Title *</label>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Job title *
+                  </label>
                   <input
                     type="text"
                     name="title"
                     value={jobData.title}
                     onChange={handleChange}
-                    placeholder="e.g. Senior Frontend Engineer"
-                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:text-white dark:placeholder-slate-500 dark:focus:border-indigo-500 dark:focus:bg-slate-800"
+                    placeholder="e.g. Frontend Developer"
+                    className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/60 dark:text-white"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Company Name *</label>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Company name *
+                  </label>
                   <input
                     type="text"
                     name="company"
                     value={jobData.company}
                     onChange={handleChange}
-                    placeholder="Your Company Ltd."
-                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:text-white dark:placeholder-slate-500 dark:focus:border-indigo-500 dark:focus:bg-slate-800"
+                    placeholder="e.g. CareerNest Pvt. Ltd."
+                    className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/60 dark:text-white"
                     required
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Location *</label>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      Location *
+                    </label>
                     <input
                       type="text"
                       name="location"
                       value={jobData.location}
                       onChange={handleChange}
-                      placeholder="e.g. Remote, NY"
-                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:text-white dark:placeholder-slate-500 dark:focus:border-indigo-500 dark:focus:bg-slate-800"
+                      placeholder="e.g. Kolkata / Remote"
+                      className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/60 dark:text-white"
                       required
                     />
                   </div>
+
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Job Type</label>
-                    <input
-                      type="text"
+                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      Job type
+                    </label>
+                    <select
                       name="job_type"
                       value={jobData.job_type}
                       onChange={handleChange}
-                      placeholder="e.g. Full-time"
-                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:text-white dark:placeholder-slate-500 dark:focus:border-indigo-500 dark:focus:bg-slate-800"
-                    />
+                      className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/60 dark:text-white"
+                    >
+                      <option value="">Select type</option>
+                      <option value="Full-time">Full-time</option>
+                      <option value="Part-time">Part-time</option>
+                      <option value="Internship">Internship</option>
+                      <option value="Contract">Contract</option>
+                      <option value="Remote">Remote</option>
+                    </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Salary</label>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Salary
+                  </label>
                   <input
                     type="text"
                     name="salary"
                     value={jobData.salary}
                     onChange={handleChange}
-                    placeholder="e.g. $100k - $120k"
-                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:text-white dark:placeholder-slate-500 dark:focus:border-indigo-500 dark:focus:bg-slate-800"
+                    placeholder="e.g. ₹4 LPA - ₹6 LPA"
+                    className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/60 dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Job Description *</label>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Skills
+                  </label>
+                  <input
+                    type="text"
+                    name="skills"
+                    value={jobData.skills}
+                    onChange={handleChange}
+                    placeholder="e.g. React, Next.js, TypeScript"
+                    className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/60 dark:text-white"
+                  />
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Add multiple skills separated by commas.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
+                        AI Job Description Helper
+                      </h3>
+                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-200/80">
+                        Fill title, company, and location first.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateJD}
+                      disabled={aiLoading}
+                      className="inline-flex min-h-[46px] items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {aiLoading ? 'Generating...' : 'Generate with AI'}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Job description *
+                  </label>
                   <textarea
                     name="description"
                     value={jobData.description}
                     onChange={handleChange}
-                    placeholder="Describe the role, responsibilities, and requirements..."
-                    rows={4}
-                    className="block w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:text-white dark:placeholder-slate-500 dark:focus:border-indigo-500 dark:focus:bg-slate-800"
+                    placeholder="Describe responsibilities, requirements, and benefits..."
+                    rows={14}
+                    className="block min-h-[260px] w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/60 dark:text-white"
                     required
                   />
                 </div>
@@ -315,122 +644,146 @@ export default function RecruiterDashboard() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="group mt-2 flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-70 dark:focus:ring-offset-slate-900"
+                  className="inline-flex min-h-[52px] w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="h-4 w-4 animate-spin text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Posting Job...
-                    </span>
-                  ) : (
-                    'Publish Job'
-                  )}
+                  {loading ? 'Posting Job...' : 'Publish Job on CareerNest'}
                 </button>
               </form>
             </div>
-          </div>
+          </section>
 
-          {/* Right Column: Applicants List */}
-          <div className="lg:col-span-7">
-            <div className="rounded-3xl border border-slate-200/60 bg-white/70 p-6 shadow-sm backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-900/70 sm:p-8">
-              <div className="mb-6 flex flex-col items-start justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800 sm:flex-row sm:items-center">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-6 w-6">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Recent Applicants</h2>
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{applications.length} total applications</p>
-                  </div>
+          <section className="xl:col-span-7">
+            <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 sm:p-6">
+              <div className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    Recent applicants
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {applicantCount} application{applicantCount !== 1 ? 's' : ''} received
+                  </p>
                 </div>
 
                 <button
                   onClick={() => user && fetchApplications(user.email)}
                   disabled={loadingApplicants}
-                  className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700/80"
+                  className="inline-flex min-h-[46px] items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`h-4 w-4 ${loadingApplicants ? 'animate-spin' : ''}`}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                  </svg>
-                  Refresh
+                  {loadingApplicants ? 'Refreshing...' : 'Refresh applicants'}
                 </button>
               </div>
 
               {loadingApplicants ? (
                 <div className="space-y-4">
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-28 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800/50"></div>
+                    <div
+                      key={i}
+                      className="h-28 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800/60"
+                    />
                   ))}
                 </div>
               ) : applications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 py-16 text-center dark:border-slate-700 dark:bg-slate-900/50">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="mb-4 h-10 w-10 text-slate-400">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
-                  </svg>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">No applicants yet</h3>
-                  <p className="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400">
-                    When candidates apply to your jobs, their applications and resumes will appear here.
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900/40">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100 text-xl font-bold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                    C
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    No applicants yet
+                  </h3>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+                    Once candidates apply to your jobs on CareerNest, their details
+                    and resumes will appear here.
                   </p>
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  {applications.map((applicant) => (
-                    <div
-                      key={applicant._id}
-                      className="group flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 transition-colors hover:border-slate-300 dark:border-slate-700/60 dark:bg-slate-800/30 dark:hover:border-slate-600 sm:flex-row sm:items-center"
-                    >
-                      <div>
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                          {applicant.candidate_name}
-                        </h3>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600 dark:text-slate-400">
-                          <span className="flex items-center gap-1.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                            </svg>
-                            <a href={`mailto:${applicant.candidate_email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">
-                              {applicant.candidate_email}
-                            </a>
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0M12 12.75h.008v.008H12v-.008z" />
-                            </svg>
-                            <span className="font-mono text-xs">ID: {applicant.job_id.slice(-6)}</span>
-                          </span>
+                  {applications.map((applicant) => {
+                    const currentStatus = applicant.status || 'pending';
+                    const isUpdating = actionLoadingId === applicant._id;
+
+                    return (
+                      <div
+                        key={applicant._id}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-indigo-300 hover:bg-white dark:border-slate-800 dark:bg-slate-800/40 dark:hover:border-slate-700 dark:hover:bg-slate-800/70 sm:p-5"
+                      >
+                        <div className="flex flex-col gap-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                                  {applicant.candidate_name}
+                                </h3>
+                                <span
+                                  className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${getStatusClasses(
+                                    currentStatus
+                                  )}`}
+                                >
+                                  {currentStatus}
+                                </span>
+                              </div>
+
+                              <p className="mt-2 break-all text-sm text-slate-600 dark:text-slate-400">
+                                {applicant.candidate_email}
+                              </p>
+                            </div>
+
+                            <div className="w-full shrink-0 sm:w-auto">
+                              {applicant.resume_url ? (
+                                <a
+                                  href={applicant.resume_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex min-h-[46px] w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 sm:w-auto"
+                                >
+                                  View resume
+                                </a>
+                              ) : (
+                                <span className="inline-flex min-h-[46px] w-full items-center justify-center rounded-2xl bg-slate-200 px-4 py-3 text-sm font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300 sm:w-auto">
+                                  No resume provided
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-3 sm:flex-row">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleApplicationAction(applicant._id, 'approved')
+                              }
+                              disabled={isUpdating || currentStatus === 'approved'}
+                              className="inline-flex min-h-[46px] items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {isUpdating && currentStatus !== 'approved'
+                                ? 'Updating...'
+                                : currentStatus === 'approved'
+                                ? 'Approved'
+                                : 'Approve'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleApplicationAction(applicant._id, 'rejected')
+                              }
+                              disabled={isUpdating || currentStatus === 'rejected'}
+                              className="inline-flex min-h-[46px] items-center justify-center rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {isUpdating && currentStatus !== 'rejected'
+                                ? 'Updating...'
+                                : currentStatus === 'rejected'
+                                ? 'Rejected'
+                                : 'Reject'}
+                            </button>
+                          </div>
                         </div>
                       </div>
-
-                      <div className="shrink-0">
-                        {applicant.resume_url ? (
-                          <a
-                            href={applicant.resume_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-indigo-600 shadow-sm ring-1 ring-inset ring-slate-200 transition-all hover:bg-slate-50 dark:bg-slate-900 dark:text-indigo-400 dark:ring-slate-700 dark:hover:bg-slate-800 sm:w-auto"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                            View Resume
-                          </a>
-                        ) : (
-                          <span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                            No Resume Provided
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
-          </div>
+          </section>
         </div>
       </main>
     </div>
