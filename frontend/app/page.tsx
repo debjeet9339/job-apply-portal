@@ -1,5 +1,6 @@
 'use client';
 
+import { MessageCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
@@ -485,6 +486,45 @@ export default function Home() {
           </div>
         </div>
       </footer>
+      <Link
+          href="/career_assistant"
+          className="
+    fixed bottom-6 right-6 z-50 
+    flex items-center gap-3 
+    rounded-full px-6 py-3.5
+    bg-gradient-to-r from-emerald-600 to-teal-600 
+    text-white shadow-2xl shadow-emerald-500/20
+    transition-all duration-300 ease-out
+    hover:scale-105 hover:shadow-emerald-500/40 
+    hover:-translate-y-1 active:scale-95
+    cursor-pointer group
+    animate-ai-glow
+    ring-1 ring-white/20 ring-inset
+    dark:from-emerald-500 dark:to-teal-500
+  "
+        >
+          {/* Icon with a subtle "ping" notification dot */}
+          <div className="relative">
+            <MessageCircle className="h-5 w-5 transition-transform group-hover:rotate-12" />
+            <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-200"></span>
+            </span>
+          </div>
+
+          {/* Text with improved typography */}
+          <div className="flex flex-col items-start leading-none">
+            <span className="hidden sm:inline text-xs font-bold uppercase tracking-widest opacity-80">
+              Assistant
+            </span>
+            <span className="hidden sm:inline font-black text-sm tracking-tight">
+              Career AI
+            </span>
+          </div>
+
+          {/* Subtle "Shimmer" overlay effect */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </Link>
     </main>
   );
 }

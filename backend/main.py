@@ -1,49 +1,58 @@
-from typing import List, Dict, Optional, Literal
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, Optional
+from uuid import uuid4
+import os
+import shutil
+
+import httpx
+from bson import ObjectId
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-from fastapi.staticfiles import StaticFiles
-from bson import ObjectId
-from pydantic import BaseModel
-import shutil
-import os
-import httpx
 
+from auth import (
+    create_token,
+    get_current_user,
+    hash_password,
+    require_candidate,
+    require_recruiter,
+    verify_password,
+)
 from models import (
     ApplicationStatusUpdate,
     CareerChatRequest,
     CareerChatResponse,
-    ChatMessage,
     JDGenerateRequest,
     JDGenerateResponse,
+    JobModel,
     JobStatusUpdateModel,
     LoginModel,
     SignupModel,
-    JobModel,
-)
-from auth import (
-    get_current_user,
-    hash_password,
-    verify_password,
-    create_token,
-    require_recruiter,
-    require_candidate,
 )
 
 load_dotenv()
 
 app = FastAPI(
-    title="Job Portal application",
-    description="A simple full stack job portal application made by FastAPI",
+    title="Job Portal Application",
+    description="A full stack job portal built with FastAPI",
+    version="1.0.0",
 )
 
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# -----------------------------
+# Config
+# -----------------------------
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8000")
 MONGO_URI = os.getenv("MONGO_URI")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
+
 if not MONGO_URI:
     raise ValueError("MONGO_URI is missing in .env")
 
@@ -54,22 +63,200 @@ users_collection = db["users"]
 jobs_collection = db["jobs"]
 applications_collection = db["applications"]
 
+JOB_STATUSES = {"pending", "approved", "rejected"}
+APPLICATION_STATUSES = {"pending", "approved", "rejected"}
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
-def serialize_doc(document):
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
+def serialize_doc(document: Optional[dict]) -> Optional[dict]:
     if not document:
         return None
-    document["_id"] = str(document["_id"])
-    return document
+
+    serialized = {}
+    for key, value in document.items():
+        if isinstance(value, ObjectId):
+            serialized[key] = str(value)
+        else:
+            serialized[key] = value
+    return serialized
 
 
+def parse_object_id(id_value: str, label: str = "ID") -> ObjectId:
+    try:
+        return ObjectId(id_value)
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"Invalid {label}")
+
+
+def build_resume_url(filename: str) -> str:
+    return f"{BACKEND_BASE_URL}/uploads/{filename}"
+
+
+def safe_filename(original_name: str) -> str:
+    extension = Path(original_name).suffix.lower() or ".pdf"
+    return f"{uuid4().hex}{extension}"
+
+
+def fallback_career_reply(message: str, user_profile: Optional[Dict[str, str]] = None) -> str:
+    text = message.lower()
+
+    target_role = "Full Stack Developer"
+    if user_profile and user_profile.get("target_role"):
+        target_role = user_profile["target_role"]
+
+    if "resume" in text or "cv" in text:
+        return f"""Here is a cleaner resume plan for a fresher {target_role}:
+
+1. Add a strong headline
+   Example: {target_role} | Next.js | FastAPI | MongoDB
+
+2. Write a short summary
+   Mention your skills, strongest projects, and what role you are targeting.
+
+3. Improve project descriptions
+   For each project include:
+   - problem solved
+   - tech stack
+   - key features
+   - your contribution
+   - live link / GitHub link
+
+4. Add a focused skills section
+   Group skills into frontend, backend, database, and tools.
+
+5. Keep the format clean
+   Use short bullet points and good spacing.
+"""
+
+    if "interview" in text:
+        return f"""Here are some interview areas to prepare for {target_role}:
+
+- self introduction
+- project explanation
+- HTML, CSS, JavaScript
+- React / Next.js basics
+- API and backend basics
+- authentication and database questions
+
+Sample questions:
+1. Tell me about yourself.
+2. Explain your best project.
+3. Why did you choose this tech stack?
+4. What is server-side rendering?
+5. How does frontend connect with backend?
+"""
+
+    if "roadmap" in text or "skill" in text:
+        return f"""Here is a simple roadmap for {target_role}:
+
+1. HTML, CSS, JavaScript
+2. React fundamentals
+3. Next.js routing and layouts
+4. Tailwind CSS
+5. Backend with FastAPI or Node.js
+6. MongoDB or SQL
+7. Authentication
+8. Deployment and GitHub
+9. Interview preparation
+10. 2 to 3 strong portfolio projects
+"""
+
+    if "project" in text:
+        return """Strong project ideas:
+- AI Job Portal
+- Resume Analyzer
+- Interview Practice App
+- Typing Test App
+- Task Manager with auth
+- Student Progress Tracker
+"""
+
+    return """I can help with:
+- resume improvement
+- interview preparation
+- skill roadmap
+- project ideas
+- cover letter help
+- fresher career guidance
+"""
+
+
+async def ask_ollama(
+    user_message: str,
+    history: list[dict],
+    user_profile: Optional[Dict[str, str]] = None,
+) -> str:
+    system_prompt = f"""
+You are a professional AI Career Assistant for a job portal website.
+
+You help with:
+- resume improvement
+- interview questions
+- skill roadmaps
+- project ideas
+- fresher guidance
+- cover letter help
+
+Rules:
+- keep answers practical and structured
+- guide beginners clearly
+- do not overpromise
+- prefer concise, useful responses
+- if relevant, suggest next steps
+
+User profile:
+{user_profile or {}}
+""".strip()
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "stream": False,
+        "keep_alive": "10m",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            *history[-8:],
+            {"role": "user", "content": user_message},
+        ],
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            response = await client.post(OLLAMA_URL, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+        reply = data.get("message", {}).get("content", "").strip()
+        if reply:
+            return reply
+
+        return fallback_career_reply(user_message, user_profile)
+
+    except Exception:
+        return fallback_career_reply(user_message, user_profile)
+
+
+# -----------------------------
+# Base Routes
+# -----------------------------
 @app.get("/")
 async def home():
     return {"message": "Server running!"}
@@ -84,10 +271,12 @@ def test_db():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# -----------------------------
+# Auth Routes
+# -----------------------------
 @app.post("/signup")
 def signup(user: SignupModel):
     existing_user = users_collection.find_one({"email": user.email})
-
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -97,13 +286,12 @@ def signup(user: SignupModel):
             detail="Role must be candidate, recruiter, or admin",
         )
 
-    hashed_pw = hash_password(user.password)
-
     new_user = {
         "name": user.name,
         "email": user.email,
-        "password": hashed_pw,
+        "password": hash_password(user.password),
         "role": user.role,
+        "created_at": utc_now(),
     }
 
     users_collection.insert_one(new_user)
@@ -113,7 +301,6 @@ def signup(user: SignupModel):
 @app.post("/login")
 def login(user: LoginModel):
     existing_user = users_collection.find_one({"email": user.email})
-
     if not existing_user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -144,12 +331,16 @@ def get_users(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access only")
 
-    users = []
-    for user in users_collection.find({}, {"password": 0}):
-        users.append(serialize_doc(user))
+    users = [
+        serialize_doc(user)
+        for user in users_collection.find({}, {"password": 0})
+    ]
     return {"users": users}
 
 
+# -----------------------------
+# Job Routes
+# -----------------------------
 @app.post("/jobs")
 def create_job(job: JobModel, current_user: dict = Depends(require_recruiter)):
     if job.recruiter_email != current_user["email"]:
@@ -167,6 +358,8 @@ def create_job(job: JobModel, current_user: dict = Depends(require_recruiter)):
         "job_type": job.job_type,
         "recruiter_email": job.recruiter_email,
         "status": "pending",
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
     }
 
     result = jobs_collection.insert_one(new_job)
@@ -179,18 +372,17 @@ def create_job(job: JobModel, current_user: dict = Depends(require_recruiter)):
 
 @app.get("/jobs")
 def get_jobs():
-    jobs = []
-    for job in jobs_collection.find({"status": "approved"}):
-        jobs.append(serialize_doc(job))
+    jobs = [
+        serialize_doc(job)
+        for job in jobs_collection.find({"status": "approved"}).sort("created_at", -1)
+    ]
     return {"jobs": jobs}
 
 
 @app.get("/jobs/{job_id}")
 def get_single_job(job_id: str):
-    try:
-        job = jobs_collection.find_one({"_id": ObjectId(job_id)})
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid job ID")
+    object_id = parse_object_id(job_id, "job ID")
+    job = jobs_collection.find_one({"_id": object_id, "status": "approved"})
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -198,6 +390,9 @@ def get_single_job(job_id: str):
     return {"job": serialize_doc(job)}
 
 
+# -----------------------------
+# Application Routes
+# -----------------------------
 @app.post("/apply")
 async def apply_job(
     current_user: dict = Depends(require_candidate),
@@ -216,30 +411,41 @@ async def apply_job(
     if candidate_name != current_user["name"]:
         raise HTTPException(status_code=403, detail="Invalid candidate name")
 
+    object_id = parse_object_id(job_id, "job ID")
+    job = jobs_collection.find_one({"_id": object_id, "status": "approved"})
+    if not job:
+        raise HTTPException(status_code=404, detail="Approved job not found")
+
+    if recruiter_email != job["recruiter_email"]:
+        raise HTTPException(status_code=400, detail="Recruiter email does not match job")
+
     existing_application = applications_collection.find_one(
         {"job_id": job_id, "candidate_email": candidate_email}
     )
-
     if existing_application:
         raise HTTPException(status_code=400, detail="You already applied for this job")
 
     if resume.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
-    safe_email = candidate_email.replace("@", "_at_")
-    filename = f"{safe_email}_{job_id}_{resume.filename}"
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    filename = safe_filename(resume.filename or "resume.pdf")
+    file_path = UPLOAD_DIR / filename
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(resume.file, buffer)
 
     new_application = {
         "job_id": job_id,
+        "job_title": job["title"],
+        "company": job["company"],
         "candidate_name": candidate_name,
         "candidate_email": candidate_email,
         "recruiter_email": recruiter_email,
         "resume_file": filename,
-        "resume_url": f"http://127.0.0.1:8000/uploads/{filename}",
+        "resume_url": build_resume_url(filename),
+        "status": "pending",
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
     }
 
     result = applications_collection.insert_one(new_application)
@@ -247,7 +453,7 @@ async def apply_job(
     return {
         "message": "Application submitted successfully",
         "application_id": str(result.inserted_id),
-        "resume_url": f"http://127.0.0.1:8000/uploads/{filename}",
+        "resume_url": build_resume_url(filename),
     }
 
 
@@ -262,28 +468,53 @@ def get_applications(
             detail="You can only view your own applications",
         )
 
-    applications = []
-    for application in applications_collection.find({"recruiter_email": recruiter_email}):
-        applications.append(serialize_doc(application))
+    applications = [
+        serialize_doc(application)
+        for application in applications_collection.find(
+            {"recruiter_email": recruiter_email}
+        ).sort("created_at", -1)
+    ]
 
     return {"applications": applications}
 
+
 @app.patch("/applications/{application_id}/status")
-async def update_application_status(application_id: str, payload: ApplicationStatusUpdate):
-    if payload.status not in ["approved", "rejected"]:
+async def update_application_status(
+    application_id: str,
+    payload: ApplicationStatusUpdate,
+    current_user: dict = Depends(require_recruiter),
+):
+    if payload.status not in APPLICATION_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
 
-    result = db.applications.update_one(
-        {"_id": ObjectId(application_id)},
-        {"$set": {"status": payload.status}}
-    )
+    object_id = parse_object_id(application_id, "application ID")
+    application = applications_collection.find_one({"_id": object_id})
 
-    if result.matched_count == 0:
+    if not application:
         raise HTTPException(status_code=404, detail="Application not found")
+
+    if application["recruiter_email"] != current_user["email"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only update applications for your own jobs",
+        )
+
+    applications_collection.update_one(
+        {"_id": object_id},
+        {
+            "$set": {
+                "status": payload.status,
+                "updated_at": utc_now(),
+            }
+        },
+    )
 
     return {"message": f"Application {payload.status} successfully"}
 
 
+# -----------------------------
+# AI / JD Routes
+# -----------------------------
 @app.post("/generate-job-description", response_model=JDGenerateResponse)
 async def generate_job_description(
     data: JDGenerateRequest,
@@ -345,15 +576,37 @@ async def generate_job_description(
     )
 
 
+@app.post("/career-chat", response_model=CareerChatResponse)
+async def career_chat(payload: CareerChatRequest):
+    reply = await ask_ollama(
+        user_message=payload.message,
+        history=[{"role": m.role, "content": m.content} for m in payload.history],
+        user_profile=payload.user_profile,
+    )
+
+    return CareerChatResponse(
+        reply=reply,
+        suggestions=[
+            "Improve my resume",
+            "Give me interview questions",
+            "Create a skill roadmap",
+            "Suggest portfolio projects",
+        ],
+    )
+
+
+# -----------------------------
+# Admin Routes
+# -----------------------------
 @app.get("/admin/jobs")
 def get_all_jobs_for_admin(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access only")
 
-    jobs = []
-    for job in jobs_collection.find():
-        jobs.append(serialize_doc(job))
-
+    jobs = [
+        serialize_doc(job)
+        for job in jobs_collection.find().sort("created_at", -1)
+    ]
     return {"jobs": jobs}
 
 
@@ -366,233 +619,23 @@ def update_job_status(
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access only")
 
-    try:
-        job = jobs_collection.find_one({"_id": ObjectId(job_id)})
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid job ID")
+    if data.status not in JOB_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid job status")
+
+    object_id = parse_object_id(job_id, "job ID")
+    job = jobs_collection.find_one({"_id": object_id})
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     jobs_collection.update_one(
-        {"_id": ObjectId(job_id)},
-        {"$set": {"status": data.status}},
+        {"_id": object_id},
+        {
+            "$set": {
+                "status": data.status,
+                "updated_at": utc_now(),
+            }
+        },
     )
 
     return {"message": f"Job {data.status} successfully"}
-
-
-def build_system_prompt(user_profile: Optional[Dict[str, str]] = None) -> str:
-    profile_text = ""
-    if user_profile:
-        name = user_profile.get("name", "")
-        target_role = user_profile.get("target_role", "")
-        skills = user_profile.get("skills", "")
-        experience = user_profile.get("experience", "")
-
-        profile_text = f"""
-User profile:
-- Name: {name}
-- Target Role: {target_role}
-- Skills: {skills}
-- Experience: {experience}
-"""
-
-    return f"""
-You are an AI Career Assistant inside a job portal website.
-
-Your job:
-- Help users with career guidance
-- Suggest skills to learn
-- Improve resumes
-- Generate interview questions
-- Guide freshers for job preparation
-- Suggest portfolio and project ideas
-- Keep answers practical, beginner-friendly, and structured
-- Be encouraging and professional
-
-Rules:
-- Keep answers concise but useful
-- Prefer bullet points when helpful
-- If the user asks for a roadmap, give step-by-step guidance
-- If the user asks for interview preparation, include sample questions
-- If the user asks for resume help, suggest improvements clearly
-- If user is a fresher, guide accordingly
-- Avoid fake guarantees like “you will definitely get a job”
-{profile_text}
-"""
-
-
-def fallback_reply(message: str) -> str:
-    text = message.lower()
-
-    if "resume" in text or "cv" in text:
-        return """Here’s how to improve your resume:
-
-1. Add a strong headline
-   Example: Full Stack Developer | Next.js | FastAPI | MongoDB
-
-2. Add a short summary
-   Mention your skills, projects, and career goal in 2–3 lines.
-
-3. Focus on projects
-   Include:
-   - project name
-   - tech stack
-   - what problem it solves
-   - your role
-   - key features
-
-4. Add skills section
-   Example:
-   - Frontend: Next.js, React, Tailwind CSS
-   - Backend: FastAPI, Node.js
-   - Database: MongoDB
-   - Tools: Git, GitHub, Vercel
-
-5. Use action words
-   Example:
-   - Built
-   - Developed
-   - Integrated
-   - Optimized
-
-If you want, paste your resume text here and I’ll improve it."""
-    
-    if "interview" in text:
-        return """Here are some fresher interview preparation tips:
-
-1. Prepare self introduction
-2. Revise projects deeply
-3. Practice HTML, CSS, JavaScript, React, Next.js
-4. Learn backend basics like APIs, auth, DB
-5. Practice common HR questions
-
-Sample questions:
-- Tell me about yourself.
-- Explain your project.
-- What is Next.js?
-- Difference between client side and server side rendering?
-- What is an API?
-- Why should we hire you?
-
-Send me your target role and I’ll generate role-based interview questions."""
-    
-    if "skill" in text or "roadmap" in text:
-        return """For a web developer career roadmap:
-
-1. HTML, CSS, JavaScript
-2. React basics
-3. Next.js App Router
-4. Tailwind CSS
-5. Backend with FastAPI or Node.js
-6. MongoDB / SQL
-7. Authentication
-8. Project deployment
-9. Git & GitHub
-10. Interview preparation
-
-Best project ideas:
-- Job portal
-- Typing test app
-- AI resume analyzer
-- Interview prep dashboard
-- Task manager
-
-Tell me your current level and I’ll make a 30-day roadmap."""
-    
-    if "project" in text:
-        return """Good portfolio projects for you:
-
-1. AI Job Portal
-2. Resume Analyzer
-3. Interview Practice App
-4. Real-time Task Manager
-5. Student Progress Tracker
-6. Freelance Service Platform
-
-For each project, include:
-- live demo
-- GitHub link
-- screenshots
-- features
-- tech stack
-- challenges solved"""
-    
-    return """I can help you with:
-
-- resume improvement
-- interview preparation
-- skill roadmap
-- project ideas
-- cover letter writing
-- career guidance for freshers
-
-Try asking:
-- Improve my resume summary
-- Give me Next.js interview questions
-- Create a 30-day web developer roadmap
-- Suggest portfolio projects for fresher"""
-
-
-async def call_ai_api(user_message: str, history: List[ChatMessage], user_profile: Optional[Dict[str, str]] = None) -> str:
-    api_url = os.getenv("AI_API_URL")
-    api_key = os.getenv("AI_API_KEY")
-    ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
-
-    if not api_url or not api_key:
-        return fallback_reply(user_message)
-
-    messages = [{"role": "system", "content": build_system_prompt(user_profile)}]
-
-    for msg in history[-8:]:
-        messages.append({
-            "role": msg.role,
-            "content": msg.content
-        })
-
-    messages.append({"role": "user", "content": user_message})
-
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                api_url,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": ai_model,
-                    "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 500,
-                },
-            )
-
-        data = response.json()
-
-        if "choices" in data and len(data["choices"]) > 0:
-            return data["choices"][0]["message"]["content"]
-
-        return fallback_reply(user_message)
-
-    except Exception:
-        return fallback_reply(user_message)
-
-
-@app.post("/career-chat", response_model=CareerChatResponse)
-async def career_chat(payload: CareerChatRequest):
-    reply = await call_ai_api(
-        user_message=payload.message,
-        history=payload.history,
-        user_profile=payload.user_profile
-    )
-
-    suggestions = [
-        "Improve my resume",
-        "Give me interview questions",
-        "Create a skill roadmap",
-        "Suggest portfolio projects"
-    ]
-
-    return CareerChatResponse(reply=reply, suggestions=suggestions)
