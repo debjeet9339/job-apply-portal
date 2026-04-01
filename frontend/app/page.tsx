@@ -102,127 +102,102 @@ export default function Home() {
         <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-fuchsia-300/10 blur-3xl dark:bg-fuchsia-700/10" />
       </div>
 
-      <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/85 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/75">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-bold text-white shadow-lg shadow-indigo-600/20">
-              C
-            </div>
-            <div>
-              <p className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">
-                CareerNest
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Smart hiring platform
-              </p>
-            </div>
-          </Link>
+      <header className="sticky top-0 z-50 w-full border-b border-slate-200/50 bg-white/80 backdrop-blur-md dark:border-slate-800/50 dark:bg-slate-950/80">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between gap-4 md:h-20">
 
-          <nav className="hidden items-center gap-8 md:flex">
-            {navItems.map((item) => (
-              <a
-                key={item.label}
-                href={item.href}
-                className="text-sm font-medium text-slate-600 transition-colors hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400"
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
-
-          <div className="hidden items-center gap-3 md:flex">
-            <button
-              onClick={() => setDarkMode((prev) => !prev)}
-              className="relative flex h-10 w-16 items-center rounded-full border border-slate-200 bg-slate-100 p-1 transition dark:border-slate-700 dark:bg-slate-800"
-              aria-label="Toggle dark mode"
-              type="button"
-            >
-              <div
-                className={`flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm transition-transform duration-300 dark:bg-slate-950 ${
-                  darkMode ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              >
-                {darkMode ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4 text-indigo-400">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-                  </svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4 text-amber-500">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                  </svg>
-                )}
+            {/* Left: Branding */}
+            <Link href="/" className="group flex shrink-0 items-center gap-3 transition-opacity hover:opacity-90">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-lg font-bold text-white shadow-md shadow-indigo-200 transition-transform group-hover:scale-105 dark:shadow-none">
+                C
               </div>
-            </button>
-
-            <Link
-              href="/login"
-              className="text-sm font-medium text-slate-700 transition-colors hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
-            >
-              Sign In
+              <div className="hidden flex-col sm:flex">
+                <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                  CareerNest
+                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  Smart Hiring
+                </span>
+              </div>
             </Link>
 
-            <Link
-              href="/signup"
-              className="inline-flex min-h-[42px] items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
-            >
-              Get Started
-            </Link>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen((prev) => !prev)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 md:hidden"
-            aria-label="Open menu"
-          >
-            {mobileMenuOpen ? (
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-5 w-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-5 w-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5m-16.5 5.25h16.5m-16.5 5.25h16.5" />
-              </svg>
-            )}
-          </button>
-        </div>
-
-        {mobileMenuOpen && (
-          <div className="border-t border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950 md:hidden">
-            <div className="flex flex-col gap-3">
+            {/* Center: Main Navigation */}
+            <nav className="hidden items-center gap-1 md:flex">
               {navItems.map((item) => (
                 <a
                   key={item.label}
                   href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900"
+                  className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-indigo-400"
                 >
                   {item.label}
                 </a>
               ))}
+            </nav>
 
+            {/* Right: Actions & Theme */}
+            <div className="flex items-center gap-2 sm:gap-4">
+
+              {/* Compact Theme Toggle */}
               <button
                 onClick={() => setDarkMode((prev) => !prev)}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
-                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
+                aria-label="Toggle theme"
               >
-                {darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                {darkMode ? (
+                  <svg className="h-4 w-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                ) : (
+                  <svg className="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.364l-.707-.707M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                )}
               </button>
 
-              <Link
-                href="/login"
-                className="rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900"
-              >
-                Sign In
-              </Link>
+              <div className="hidden h-6 w-px bg-slate-200 dark:bg-slate-800 md:block" />
 
-              <Link
-                href="/signup"
-                className="inline-flex min-h-[46px] items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white"
+              <div className="hidden items-center gap-2 md:flex">
+                <Link
+                  href="/login"
+                  className="rounded-lg px-4 py-2 text-sm font-bold text-slate-600 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/signup"
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:bg-indigo-700 active:scale-95"
+                >
+                  Get Started
+                </Link>
+              </div>
+
+              {/* Mobile Toggle */}
+              <button
+                onClick={() => setMobileMenuOpen((prev) => !prev)}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 md:hidden"
               >
-                Get Started
-              </Link>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={mobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16m-7 6h7"} />
+                </svg>
+              </button>
             </div>
+
+          </div>
+        </div>
+
+        {/* Refined Mobile Menu Overlay */}
+        {mobileMenuOpen && (
+          <div className="absolute left-0 right-0 top-full border-b border-slate-200 bg-white p-4 shadow-xl dark:border-slate-800 dark:bg-slate-950 md:hidden">
+            <nav className="flex flex-col gap-1">
+              {navItems.map((item) => (
+                <a key={item.label} href={item.href} className="rounded-lg px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-900">
+                  {item.label}
+                </a>
+              ))}
+              <div className="my-2 h-px bg-slate-100 dark:bg-slate-800" />
+              <Link href="/login" className="px-4 py-3 text-sm font-bold text-slate-600 dark:text-slate-400">Sign In</Link>
+              <Link href="/signup" className="mt-2 rounded-xl bg-indigo-600 px-4 py-4 text-center text-sm font-bold text-white shadow-lg">Get Started</Link>
+            </nav>
           </div>
         )}
       </header>

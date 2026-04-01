@@ -1,3 +1,4 @@
+from typing import List, Dict, Optional, Literal
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
@@ -5,12 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from fastapi.staticfiles import StaticFiles
 from bson import ObjectId
+from pydantic import BaseModel
 import shutil
 import os
-from pydantic import BaseModel
+import httpx
 
 from models import (
     ApplicationStatusUpdate,
+    CareerChatRequest,
+    CareerChatResponse,
+    ChatMessage,
     JDGenerateRequest,
     JDGenerateResponse,
     JobStatusUpdateModel,
@@ -375,3 +380,219 @@ def update_job_status(
     )
 
     return {"message": f"Job {data.status} successfully"}
+
+
+def build_system_prompt(user_profile: Optional[Dict[str, str]] = None) -> str:
+    profile_text = ""
+    if user_profile:
+        name = user_profile.get("name", "")
+        target_role = user_profile.get("target_role", "")
+        skills = user_profile.get("skills", "")
+        experience = user_profile.get("experience", "")
+
+        profile_text = f"""
+User profile:
+- Name: {name}
+- Target Role: {target_role}
+- Skills: {skills}
+- Experience: {experience}
+"""
+
+    return f"""
+You are an AI Career Assistant inside a job portal website.
+
+Your job:
+- Help users with career guidance
+- Suggest skills to learn
+- Improve resumes
+- Generate interview questions
+- Guide freshers for job preparation
+- Suggest portfolio and project ideas
+- Keep answers practical, beginner-friendly, and structured
+- Be encouraging and professional
+
+Rules:
+- Keep answers concise but useful
+- Prefer bullet points when helpful
+- If the user asks for a roadmap, give step-by-step guidance
+- If the user asks for interview preparation, include sample questions
+- If the user asks for resume help, suggest improvements clearly
+- If user is a fresher, guide accordingly
+- Avoid fake guarantees like “you will definitely get a job”
+{profile_text}
+"""
+
+
+def fallback_reply(message: str) -> str:
+    text = message.lower()
+
+    if "resume" in text or "cv" in text:
+        return """Here’s how to improve your resume:
+
+1. Add a strong headline
+   Example: Full Stack Developer | Next.js | FastAPI | MongoDB
+
+2. Add a short summary
+   Mention your skills, projects, and career goal in 2–3 lines.
+
+3. Focus on projects
+   Include:
+   - project name
+   - tech stack
+   - what problem it solves
+   - your role
+   - key features
+
+4. Add skills section
+   Example:
+   - Frontend: Next.js, React, Tailwind CSS
+   - Backend: FastAPI, Node.js
+   - Database: MongoDB
+   - Tools: Git, GitHub, Vercel
+
+5. Use action words
+   Example:
+   - Built
+   - Developed
+   - Integrated
+   - Optimized
+
+If you want, paste your resume text here and I’ll improve it."""
+    
+    if "interview" in text:
+        return """Here are some fresher interview preparation tips:
+
+1. Prepare self introduction
+2. Revise projects deeply
+3. Practice HTML, CSS, JavaScript, React, Next.js
+4. Learn backend basics like APIs, auth, DB
+5. Practice common HR questions
+
+Sample questions:
+- Tell me about yourself.
+- Explain your project.
+- What is Next.js?
+- Difference between client side and server side rendering?
+- What is an API?
+- Why should we hire you?
+
+Send me your target role and I’ll generate role-based interview questions."""
+    
+    if "skill" in text or "roadmap" in text:
+        return """For a web developer career roadmap:
+
+1. HTML, CSS, JavaScript
+2. React basics
+3. Next.js App Router
+4. Tailwind CSS
+5. Backend with FastAPI or Node.js
+6. MongoDB / SQL
+7. Authentication
+8. Project deployment
+9. Git & GitHub
+10. Interview preparation
+
+Best project ideas:
+- Job portal
+- Typing test app
+- AI resume analyzer
+- Interview prep dashboard
+- Task manager
+
+Tell me your current level and I’ll make a 30-day roadmap."""
+    
+    if "project" in text:
+        return """Good portfolio projects for you:
+
+1. AI Job Portal
+2. Resume Analyzer
+3. Interview Practice App
+4. Real-time Task Manager
+5. Student Progress Tracker
+6. Freelance Service Platform
+
+For each project, include:
+- live demo
+- GitHub link
+- screenshots
+- features
+- tech stack
+- challenges solved"""
+    
+    return """I can help you with:
+
+- resume improvement
+- interview preparation
+- skill roadmap
+- project ideas
+- cover letter writing
+- career guidance for freshers
+
+Try asking:
+- Improve my resume summary
+- Give me Next.js interview questions
+- Create a 30-day web developer roadmap
+- Suggest portfolio projects for fresher"""
+
+
+async def call_ai_api(user_message: str, history: List[ChatMessage], user_profile: Optional[Dict[str, str]] = None) -> str:
+    api_url = os.getenv("AI_API_URL")
+    api_key = os.getenv("AI_API_KEY")
+    ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
+
+    if not api_url or not api_key:
+        return fallback_reply(user_message)
+
+    messages = [{"role": "system", "content": build_system_prompt(user_profile)}]
+
+    for msg in history[-8:]:
+        messages.append({
+            "role": msg.role,
+            "content": msg.content
+        })
+
+    messages.append({"role": "user", "content": user_message})
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                api_url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": ai_model,
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens": 500,
+                },
+            )
+
+        data = response.json()
+
+        if "choices" in data and len(data["choices"]) > 0:
+            return data["choices"][0]["message"]["content"]
+
+        return fallback_reply(user_message)
+
+    except Exception:
+        return fallback_reply(user_message)
+
+
+@app.post("/career-chat", response_model=CareerChatResponse)
+async def career_chat(payload: CareerChatRequest):
+    reply = await call_ai_api(
+        user_message=payload.message,
+        history=payload.history,
+        user_profile=payload.user_profile
+    )
+
+    suggestions = [
+        "Improve my resume",
+        "Give me interview questions",
+        "Create a skill roadmap",
+        "Suggest portfolio projects"
+    ]
+
+    return CareerChatResponse(reply=reply, suggestions=suggestions)

@@ -197,40 +197,57 @@ export default function ApplyJobPage() {
         <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-fuchsia-300/10 blur-3xl dark:bg-fuchsia-700/10" />
       </div>
 
-      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/75">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <div className="flex items-center justify-between gap-4">
-            <Link href="/" className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-bold text-white shadow-lg shadow-indigo-600/20">
+      <header className="sticky top-0 z-50 w-full border-b border-slate-200/60 bg-white/80 backdrop-blur-md dark:border-slate-800/50 dark:bg-slate-950/80">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between">
+
+            {/* Left: Logo & Workspace Label */}
+            <Link href="/" className="group flex items-center gap-3 transition-opacity hover:opacity-90">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-base font-bold text-white shadow-md shadow-indigo-200 transition-transform group-hover:scale-105 dark:shadow-none">
                 C
               </div>
-              <div>
-                <p className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">
+              <div className="flex flex-col">
+                <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100">
                   CareerNest
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Application workspace
-                </p>
+                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  Workspace
+                </span>
               </div>
             </Link>
 
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200 lg:hidden">
-              {initial}
-            </div>
-          </div>
+            {/* Right: User Profile & Navigation */}
+            <div className="flex items-center gap-4">
 
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/80">
-            <div className="hidden h-11 w-11 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700 dark:flex dark:bg-indigo-500/15 dark:text-indigo-300">
-              {initial}
+              {/* User Details (Hidden on small mobile) */}
+              <div className="hidden items-center gap-3 border-l border-slate-200 pl-4 dark:border-slate-800 sm:flex">
+                <div className="flex flex-col items-end text-right">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                    {user?.name || 'Candidate'}
+                  </p>
+                  <p className="max-w-[120px] truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                    {user?.email}
+                  </p>
+                </div>
+              </div>
+
+              {/* Avatar Component */}
+              <button className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700">
+                {initial}
+                {/* Active status ring */}
+                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-950" />
+              </button>
+
+              {/* Mobile Menu Toggle (Optional placeholder) */}
+              <div className="sm:hidden">
+                <button className="p-1 text-slate-500 hover:text-slate-900 dark:hover:text-white">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" />
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                {user?.name || 'Candidate'}
-              </p>
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                {user?.email}
-              </p>
-            </div>
+
           </div>
         </div>
       </header>
@@ -428,11 +445,10 @@ export default function ApplyJobPage() {
 
                   {message.text && (
                     <div
-                      className={`rounded-2xl px-4 py-4 text-sm font-medium ${
-                        message.type === 'success'
+                      className={`rounded-2xl px-4 py-4 text-sm font-medium ${message.type === 'success'
                           ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
                           : 'border border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300'
-                      }`}
+                        }`}
                     >
                       {message.text}
                     </div>

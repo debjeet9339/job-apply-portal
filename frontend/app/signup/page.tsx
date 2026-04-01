@@ -231,7 +231,7 @@ export default function SignupPage() {
                       value={formData.name}
                       onChange={handleChange}
                       placeholder="John Doe"
-                      className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/50 dark:text-white dark:placeholder-slate-500"
+                      className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-500 dark:placeholder-slate-500"
                       required
                     />
                   </div>
@@ -269,7 +269,7 @@ export default function SignupPage() {
                       value={formData.email}
                       onChange={handleChange}
                       placeholder="you@example.com"
-                      className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/50 dark:text-white dark:placeholder-slate-500"
+                      className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-500 dark:placeholder-slate-500"
                       required
                     />
                   </div>
@@ -308,7 +308,7 @@ export default function SignupPage() {
                       value={formData.password}
                       onChange={handleChange}
                       placeholder="••••••••"
-                      className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-12 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/50 dark:text-white dark:placeholder-slate-500"
+                      className="block min-h-[50px] w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-12 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-500 dark:placeholder-slate-500"
                       required
                     />
 

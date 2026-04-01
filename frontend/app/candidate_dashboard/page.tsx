@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { MessageCircle } from 'lucide-react';
 
 type UserType = {
   name: string;
@@ -153,8 +154,8 @@ export default function CandidateDashboard() {
       search.trim() === ''
         ? true
         : job.title.toLowerCase().includes(search.toLowerCase()) ||
-          job.company.toLowerCase().includes(search.toLowerCase()) ||
-          job.location.toLowerCase().includes(search.toLowerCase());
+        job.company.toLowerCase().includes(search.toLowerCase()) ||
+        job.location.toLowerCase().includes(search.toLowerCase());
 
     const matchesType =
       typeFilter === 'all'
@@ -188,49 +189,76 @@ export default function CandidateDashboard() {
         <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-fuchsia-300/10 blur-3xl dark:bg-fuchsia-700/10" />
       </div>
 
-      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/75">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <div className="flex items-center justify-between gap-4">
-            <Link href="/" className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-bold text-white shadow-lg shadow-indigo-600/20">
+      <header className="sticky top-0 z-50 w-full border-b border-slate-200/60 bg-white/80 backdrop-blur-md dark:border-slate-800/50 dark:bg-slate-950/80">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between gap-4">
+
+            {/* Left: Branding */}
+            <Link href="/" className="group flex shrink-0 items-center gap-3 transition-all">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-base font-bold text-white shadow-md shadow-indigo-200 transition-transform group-hover:scale-105 dark:shadow-none">
                 C
               </div>
-              <div>
-                <p className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">
+              <div className="flex flex-col">
+                <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100">
                   CareerNest
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Candidate workspace
-                </p>
+                </span>
+                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Candidate Hub
+                </span>
               </div>
             </Link>
 
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200 lg:hidden">
-              {initial}
-            </div>
-          </div>
+            {/* Right: User Identity & Actions */}
+            <div className="flex items-center gap-3 md:gap-4">
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
-            <div className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/80">
-              <div className="hidden h-11 w-11 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700 dark:flex dark:bg-indigo-500/15 dark:text-indigo-300">
-                {initial}
+              {/* User Info Capsule */}
+              <div className="flex items-center gap-3 border-l border-slate-200 pl-4 dark:border-slate-800 md:pl-6">
+                <div className="hidden flex-col items-end text-right sm:flex">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                    {user?.name || 'Candidate'}
+                  </p>
+                  <p className="max-w-[150px] truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                    {user?.email}
+                  </p>
+                </div>
+
+                {/* Profile Avatar with Online Status */}
+                <div className="relative group cursor-pointer">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-[11px] font-bold text-indigo-600 ring-1 ring-indigo-100 transition-colors group-hover:bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:ring-indigo-500/20">
+                    {initial}
+                  </div>
+                  <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-950" />
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                  {user?.name || 'Candidate'}
-                </p>
-                <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                  {user?.email}
-                </p>
+
+              {/* Divider */}
+              <div className="hidden h-6 w-px bg-slate-200 dark:bg-slate-800 sm:block" />
+
+              {/* Action Group */}
+              <div className="flex items-center gap-1 sm:gap-2">
+                {/* Settings Button */}
+                <Link
+                  href="/profile"
+                  className="flex h-9 items-center gap-2 rounded-lg px-2 text-xs font-bold text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  title="Settings"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span className="hidden lg:inline">Settings</span>
+                </Link>
+
+                {/* Logout Button */}
+                <button
+                  onClick={handleLogout}
+                  className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-600 transition-all hover:bg-red-50 hover:text-red-600 hover:border-red-200 active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:hover:border-red-500/30"
+                >
+                  Sign Out
+                </button>
               </div>
             </div>
 
-            <button
-              onClick={handleLogout}
-              className="inline-flex min-h-[46px] items-center justify-center rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
-            >
-              Logout
-            </button>
           </div>
         </div>
       </header>
@@ -273,11 +301,10 @@ export default function CandidateDashboard() {
 
         {message.text && (
           <div
-            className={`mb-6 rounded-2xl border px-4 py-4 text-sm font-medium ${
-              message.type === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
-                : 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300'
-            }`}
+            className={`mb-6 rounded-2xl border px-4 py-4 text-sm font-medium ${message.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300'
+              }`}
           >
             {message.text}
           </div>
@@ -338,11 +365,10 @@ export default function CandidateDashboard() {
               <button
                 type="button"
                 onClick={() => setOpenOnly((prev) => !prev)}
-                className={`inline-flex min-h-[46px] items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                  openOnly
-                    ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                    : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200'
-                }`}
+                className={`inline-flex min-h-[46px] items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition ${openOnly
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200'
+                  }`}
               >
                 {openOnly ? 'Showing Open Jobs' : 'Open Jobs Only'}
               </button>
@@ -430,20 +456,18 @@ export default function CandidateDashboard() {
               return (
                 <div
                   key={job._id}
-                  className={`group flex h-full flex-col rounded-3xl border bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-md dark:bg-slate-900/70 ${
-                    status.expired
-                      ? 'border-slate-200 opacity-75 dark:border-slate-800'
-                      : 'border-slate-200/70 hover:border-indigo-300 dark:border-slate-800 dark:hover:border-indigo-800'
-                  }`}
+                  className={`group flex h-full flex-col rounded-3xl border bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-md dark:bg-slate-900/70 ${status.expired
+                    ? 'border-slate-200 opacity-75 dark:border-slate-800'
+                    : 'border-slate-200/70 hover:border-indigo-300 dark:border-slate-800 dark:hover:border-indigo-800'
+                    }`}
                 >
                   <div className="mb-5 flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <h3
-                        className={`line-clamp-2 text-lg font-bold transition-colors ${
-                          status.expired
-                            ? 'text-slate-700 dark:text-slate-300'
-                            : 'text-slate-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400'
-                        }`}
+                        className={`line-clamp-2 text-lg font-bold transition-colors ${status.expired
+                          ? 'text-slate-700 dark:text-slate-300'
+                          : 'text-slate-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400'
+                          }`}
                       >
                         {job.title}
                       </h3>
@@ -453,11 +477,10 @@ export default function CandidateDashboard() {
                     </div>
 
                     <div
-                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-lg font-bold ${
-                        status.expired
-                          ? 'bg-slate-100 text-slate-400 dark:bg-slate-800'
-                          : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300'
-                      }`}
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-lg font-bold ${status.expired
+                        ? 'bg-slate-100 text-slate-400 dark:bg-slate-800'
+                        : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300'
+                        }`}
                     >
                       {job.company.charAt(0).toUpperCase()}
                     </div>
@@ -492,13 +515,12 @@ export default function CandidateDashboard() {
                       </span>
 
                       <span
-                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                          status.expired
-                            ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'
-                            : status.urgent
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${status.expired
+                          ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'
+                          : status.urgent
                             ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
                             : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
-                        }`}
+                          }`}
                       >
                         {status.text}
                       </span>
@@ -507,20 +529,59 @@ export default function CandidateDashboard() {
                     <button
                       disabled={status.expired}
                       onClick={() => router.push(`/apply/${job._id}`)}
-                      className={`inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                        status.expired
-                          ? 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
-                          : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500'
-                      }`}
+                      className={`inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition ${status.expired
+                        ? 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                        : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500'
+                        }`}
                     >
                       {status.expired ? 'Application Closed' : 'Apply on CareerNest'}
                     </button>
                   </div>
+
                 </div>
               );
             })}
           </div>
         )}
+        <Link
+          href="/career_assistant"
+          className="
+    fixed bottom-6 right-6 z-50 
+    flex items-center gap-3 
+    rounded-full px-6 py-3.5
+    bg-gradient-to-r from-emerald-600 to-teal-600 
+    text-white shadow-2xl shadow-emerald-500/20
+    transition-all duration-300 ease-out
+    hover:scale-105 hover:shadow-emerald-500/40 
+    hover:-translate-y-1 active:scale-95
+    cursor-pointer group
+    animate-ai-glow
+    ring-1 ring-white/20 ring-inset
+    dark:from-emerald-500 dark:to-teal-500
+  "
+        >
+          {/* Icon with a subtle "ping" notification dot */}
+          <div className="relative">
+            <MessageCircle className="h-5 w-5 transition-transform group-hover:rotate-12" />
+            <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-200"></span>
+            </span>
+          </div>
+
+          {/* Text with improved typography */}
+          <div className="flex flex-col items-start leading-none">
+            <span className="hidden sm:inline text-xs font-bold uppercase tracking-widest opacity-80">
+              Assistant
+            </span>
+            <span className="hidden sm:inline font-black text-sm tracking-tight">
+              Career AI
+            </span>
+          </div>
+
+          {/* Subtle "Shimmer" overlay effect */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </Link>
       </main>
     </div>
   );

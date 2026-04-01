@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, Literal, List
+from typing import Dict, Optional, Literal, List
 
 
 class SignupModel(BaseModel):
@@ -57,3 +57,18 @@ class JDGenerateResponse(BaseModel):
 
 class ApplicationStatusUpdate(BaseModel):
     status: str
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class CareerChatRequest(BaseModel):
+    message: str
+    history: List[ChatMessage] = []
+    user_profile: Optional[Dict[str, str]] = None
+
+
+class CareerChatResponse(BaseModel):
+    reply: str
+    suggestions: List[str] = []
